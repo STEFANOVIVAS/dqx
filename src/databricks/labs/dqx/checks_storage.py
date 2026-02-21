@@ -359,17 +359,14 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
             List of dq rules.
         """
         table = self.get_table_definition(config.schema_name, config.table_name)
+        stmt = select(table).where(table.c.run_config_name == config.run_config_name)
 
-        stmt = select(table)
-        if config.run_config_name:
-            logger.info(f"Filtering checks by run_config_name='{config.run_config_name}'")
-            stmt = stmt.where(table.c.run_config_name == config.run_config_name)
-        else:
-            logger.info("Loading all checks (no run_config_name filter)")
+        if self._fingerprint_columns_exists(engine, config.schema_name, config.table_name):
+            logger.info(f"Filtering checks by rule_fingerprint='{config.rule_fingerprint}'")      
 
-        if config.rule_set_fingerprint is not None:
-            logger.info(f"Filtering checks by rule_set_fingerprint='{config.rule_set_fingerprint}'")
-            stmt = stmt.where(table.c.rule_set_fingerprint == config.rule_set_fingerprint)
+            if config.rule_set_fingerprint is not None:
+                logger.info(f"Filtering checks by rule_set_fingerprint='{config.rule_set_fingerprint}'")
+                stmt = stmt.where(table.c.rule_set_fingerprint == config.rule_set_fingerprint)
 
         with engine.connect() as conn:
             result = conn.execute(stmt)

@@ -203,3 +203,67 @@ def _create_lakebase_location(database_name, make_random):
     table_name = f"checks_{make_random(10).lower()}"
     location = f"{database_name}.config.{table_name}"
     return location
+
+
+def test_save_and_load_checks_from_lakebase_without_rule_set_fingerprint(
+    ws, spark, make_lakebase_instance, lakebase_client_id, make_random
+):
+    dq_engine = DQEngine(ws, spark)
+
+    instance = make_lakebase_instance()
+    lakebase_location = _create_lakebase_location(instance.database_name, make_random)
+
+    config = LakebaseChecksStorageConfig(
+        location=lakebase_location, client_id=lakebase_client_id, instance_name=instance.name
+    )
+
+    dq_engine.save_checks(checks=TEST_CHECKS[0:2], config=config)    
+    dq_engine.save_checks(checks=TEST_CHECKS[2:], config=config)
+    checks = dq_engine.load_checks(config=config)
+
+    compare_checks(checks, TEST_CHECKS[2:])
+
+
+def test_save_and_load_checks_from_lakebase_with_rule_set_fingerprint(
+    ws, spark, make_lakebase_instance, lakebase_client_id, make_random
+):
+    dq_engine = DQEngine(ws, spark)
+
+    instance = make_lakebase_instance()
+    lakebase_location = _create_lakebase_location(instance.database_name, make_random)
+
+    config_save = LakebaseChecksStorageConfig(
+        location=lakebase_location, client_id=lakebase_client_id, instance_name=instance.name
+    )
+
+    dq_engine.save_checks(checks=TEST_CHECKS[0:2], config=config_save)
+    
+    dq_engine.save_checks(checks=TEST_CHECKS[2:], config=config_save)
+    config_load = LakebaseChecksStorageConfig(
+        location=lakebase_location,
+        client_id=lakebase_client_id,
+        instance_name=instance.name,
+        rule_set_fingerprint="8e1e8771da2683ca212204e19c5474ee0e7b313097df8bb12bc8b33ac155512e",
+    )
+    checks = dq_engine.load_checks(config=config_load)
+
+    compare_checks(checks, TEST_CHECKS[0:2])
+
+
+def test_save_and_load_checks_from_lakebase_rule_set_fingerprint_already_exists(
+    ws, spark, make_lakebase_instance, lakebase_client_id, make_random
+):
+    dq_engine = DQEngine(ws, spark)
+
+    instance = make_lakebase_instance()
+    lakebase_location = _create_lakebase_location(instance.database_name, make_random)
+
+    config = LakebaseChecksStorageConfig(
+        location=lakebase_location, client_id=lakebase_client_id, instance_name=instance.name
+    )
+
+    dq_engine.save_checks(checks=TEST_CHECKS[0:2], config=config)
+    dq_engine.save_checks(checks=TEST_CHECKS[0:2], config=config)
+    checks = dq_engine.load_checks(config=config)
+
+    compare_checks(checks, TEST_CHECKS[0:2])
