@@ -135,11 +135,13 @@ class DQEngineCore(DQEngineCoreBase):
                 "All elements in the 'checks' list must be instances of DQRule. Use 'apply_checks_by_metadata' to pass checks as list of dicts instead."
             )
 
+        all_check_dicts = [c.to_dict() for c in checks]
+        rule_set_fp = compute_rule_set_fingerprint(all_check_dicts)
+        
         warning_checks = self._get_check_columns(checks, Criticality.WARN.value)
         error_checks = self._get_check_columns(checks, Criticality.ERROR.value)
 
-        all_check_dicts = [c.to_dict() for c in checks]
-        rule_set_fp = compute_rule_set_fingerprint(all_check_dicts)
+       
 
         result_df = self._create_results_array(
             df, error_checks, self._result_column_names[ColumnArguments.ERRORS], ref_dfs, rule_set_fp

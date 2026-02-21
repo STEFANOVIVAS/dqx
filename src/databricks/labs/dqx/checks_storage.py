@@ -136,7 +136,7 @@ class TableChecksStorageHandler(ChecksStorageHandler[TableChecksStorageConfig]):
         print(f"rule_set_fingerprint: {rule_set_fingerprint}")
         if rule_set_fingerprint is not None and self.spark.catalog.tableExists(config.location):
             if not self.spark.read.table(config.location).filter(
-                f"run_config_name = '{config.run_config_name}' and rule_set_fingerprint = '{rule_set_fingerprint}'").take(1)==0:
+                f"run_config_name = '{config.run_config_name}' and rule_set_fingerprint = '{rule_set_fingerprint}'").isEmpty():
                 logger.info(f"Checks with rule_set_fingerprint '{rule_set_fingerprint}' already exist in table '{config.location}'")
                 return
         
