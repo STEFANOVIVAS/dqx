@@ -500,3 +500,54 @@ def test_save_checks_invalid_storage_config(ws, spark):
 
     with pytest.raises(InvalidConfigError, match="Unsupported storage config type"):
         engine.save_checks([{}], config=config)
+
+
+def test_save_and_load_checks_from_delta_table_without_rule_set_fingerprint(ws, make_schema, make_random, spark):
+    catalog_name = TEST_CATALOG
+    schema_name = make_schema(catalog_name=catalog_name).name
+    table_name = f"{catalog_name}.{schema_name}.{make_random(10).lower()}"
+
+    engine = DQEngine(ws, spark)
+    config = TableChecksStorageConfig(location=table_name)
+    engine.save_checks(INPUT_CHECKS[:1], config=config)
+    
+    engine.save_checks(INPUT_CHECKS[1:], config=config)
+
+    checks = engine.load_checks(config=config)
+    assert checks == EXPECTED_CHECKS[2:], f"Checks were not loaded correctly for {config.run_config_name} run config."
+
+
+def test_save_and_load_checks_from_delta_table_with_rule_set_fingerprint(ws, make_schema, make_random, spark):
+    catalog_name = TEST_CATALOG
+    schema_name = make_schema(catalog_name=catalog_name).name
+    table_name = f"{catalog_name}.{schema_name}.{make_random(10).lower()}"
+
+    engine = DQEngine(ws, spark)
+    config_save = TableChecksStorageConfig(location=table_name)
+    engine.save_checks(INPUT_CHECKS[:1], config=config_save)
+    
+    engine.save_checks(INPUT_CHECKS[1:], config=config_save)
+
+    config_load = TableChecksStorageConfig(
+        location=table_name,
+        rule_set_fingerprint="8e1e8771da2683ca212204e19c5474ee0e7b313097df8bb12bc8b33ac155512e",
+    )
+    checks = engine.load_checks(config=config_load)
+
+    assert (
+        checks == EXPECTED_CHECKS[0:2]
+    ), f"Checks were not loaded correctly for {config_load.run_config_name} run config."
+
+
+def test_save_and_load_checks_from_delta_table_rule_set_fingerprint_already_exists(ws, make_schema, make_random, spark):
+    
+    catalog_name = TEST_CATALOG
+    schema_name = make_schema(catalog_name=catalog_name).name
+    table_name = f"{catalog_name}.{schema_name}.{make_random(10).lower()}"
+
+    engine = DQEngine(ws, spark)
+    config = TableChecksStorageConfig(location=table_name)
+    engine.save_checks(INPUT_CHECKS[1:], config=config)
+    engine.save_checks(INPUT_CHECKS[1:], config=config)
+    checks = engine.load_checks(config=config)
+    assert checks == EXPECTED_CHECKS[2:], f"Checks were not loaded correctly for {config.run_config_name} run config."
