@@ -350,7 +350,9 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
                 )
                 .limit(1)
             )
-            
+            if conn.execute(exists_rule_set).first():
+                logger.info(f"Checks with rule_set_fingerprint {rule_set_fingerprint} already exist — skipping")
+                return
             insert_stmt = insert(table)
             conn.execute(insert_stmt, normalized_checks)
             logger.info(
@@ -410,6 +412,7 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
                     f"Make sure the profiler has run successfully and saved checks to this location."
                 )
             checks_dict = [dict(check) for check in checks]
+          
             # Denormalize special markers back to objects
             return ChecksNormalizer.denormalize(checks_dict)
 
