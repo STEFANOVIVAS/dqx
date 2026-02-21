@@ -216,6 +216,17 @@ class DQRule(abc.ABC, DQRuleTypeMixin, SingleColumnMixin, MultipleColumnsMixin):
 
         return args, kwargs
 
+    @ft.cached_property
+    def fingerprint(self) -> str:
+        """Compute a deterministic fingerprint hash for this rule.
+
+        Returns:
+            A hex-encoded SHA-256 hash string based on the rule's definition.
+        """
+        from databricks.labs.dqx.checks_serializer import compute_rule_fingerprint
+
+        return compute_rule_fingerprint(self.to_dict())
+
     def to_dict(self) -> dict:
         """
         Converts a DQRule instance into a structured dictionary.

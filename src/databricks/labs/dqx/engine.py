@@ -16,7 +16,7 @@ from pyspark.sql.streaming import StreamingQuery
 
 from databricks.labs.dqx.base import DQEngineBase, DQEngineCoreBase
 from databricks.labs.dqx.checks_resolver import resolve_custom_check_functions_from_path
-from databricks.labs.dqx.checks_serializer import deserialize_checks
+from databricks.labs.dqx.checks_serializer import deserialize_checks, compute_rule_fingerprint, compute_rule_set_fingerprint
 from databricks.labs.dqx.config_serializer import ConfigSerializer
 from databricks.labs.dqx.checks_storage import (
     FileChecksStorageHandler,
@@ -138,11 +138,14 @@ class DQEngineCore(DQEngineCoreBase):
         warning_checks = self._get_check_columns(checks, Criticality.WARN.value)
         error_checks = self._get_check_columns(checks, Criticality.ERROR.value)
 
+        all_check_dicts = [c.to_dict() for c in checks]
+        rule_set_fp = compute_rule_set_fingerprint(all_check_dicts)
+
         result_df = self._create_results_array(
-            df, error_checks, self._result_column_names[ColumnArguments.ERRORS], ref_dfs
+            df, error_checks, self._result_column_names[ColumnArguments.ERRORS], ref_dfs, rule_set_fp
         )
         result_df = self._create_results_array(
-            result_df, warning_checks, self._result_column_names[ColumnArguments.WARNINGS], ref_dfs
+            result_df, warning_checks, self._result_column_names[ColumnArguments.WARNINGS], ref_dfs, rule_set_fp
         )
         observed_result = self._observe_metrics(result_df)
 
@@ -395,7 +398,12 @@ class DQEngineCore(DQEngineCoreBase):
         )
 
     def _create_results_array(
-        self, df: DataFrame, checks: list[DQRule], dest_col: str, ref_dfs: dict[str, DataFrame] | None = None
+        self,
+        df: DataFrame,
+        checks: list[DQRule],
+        dest_col: str,
+        ref_dfs: dict[str, DataFrame] | None = None,
+        rule_set_fingerprint: str | None = None,
     ) -> DataFrame:
         """
         Apply a list of data quality checks to a DataFrame and assemble their results into an array column.
@@ -433,6 +441,8 @@ class DQEngineCore(DQEngineCoreBase):
                 engine_user_metadata=self.engine_user_metadata,
                 run_time_overwrite=self.run_time_overwrite,
                 ref_dfs=ref_dfs,
+                rule_fingerprint=compute_rule_fingerprint(normalized_check.to_dict()),
+                rule_set_fingerprint=rule_set_fingerprint,
             )
             log_telemetry(self.ws, "check", check.check_func.__name__)
             result = manager.process()

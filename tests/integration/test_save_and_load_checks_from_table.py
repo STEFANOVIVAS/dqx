@@ -18,6 +18,9 @@ from databricks.labs.dqx.checks_serializer import CHECKS_TABLE_SCHEMA
 
 from tests.conftest import TEST_CATALOG
 
+TEST_CHECKS_TABLE_SCHEMA =  ("name STRING, criticality STRING, check STRUCT<function STRING, for_each_column ARRAY<STRING>,"
+                            " arguments MAP<STRING, STRING>>, filter STRING, run_config_name STRING, user_metadata MAP<STRING, STRING>")
+    
 
 INPUT_CHECKS = [
     {
@@ -130,8 +133,8 @@ def test_save_checks_to_table_with_unresolved_for_each_column(ws, make_schema, m
     engine = DQEngine(ws, spark)
     config = TableChecksStorageConfig(location=table_name, run_config_name="default")
     engine.save_checks(INPUT_CHECKS, config=config)
-    checks_df = spark.read.table(table_name)
-
+    checks_df = spark.read.table(table_name).select("name", "criticality", "check", "filter", "run_config_name", "user_metadata")
+   
     expected_raw_checks = [
         {
             "name": "col1_is_null",
@@ -192,7 +195,7 @@ def test_save_checks_to_table_with_unresolved_for_each_column(ws, make_schema, m
         },
     ]
 
-    expected_checks_df = spark.createDataFrame(expected_raw_checks, CHECKS_TABLE_SCHEMA)
+    expected_checks_df = spark.createDataFrame(expected_raw_checks, TEST_CHECKS_TABLE_SCHEMA)
 
     assert_df_equality(checks_df, expected_checks_df, ignore_nullable=True)
 
@@ -361,7 +364,7 @@ def test_load_checks_from_table_with_unresolved_for_each_column(ws, make_schema,
         ],
     ]
 
-    checks_df = spark.createDataFrame(input_checks, CHECKS_TABLE_SCHEMA)
+    checks_df = spark.createDataFrame(input_checks, TEST_CHECKS_TABLE_SCHEMA)
     checks_df.write.saveAsTable(table_name)
 
     engine = DQEngine(ws, spark)

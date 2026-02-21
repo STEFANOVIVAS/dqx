@@ -2,11 +2,13 @@ import json
 import logging
 import uuid
 import os
+from datetime import datetime, timezone
 from io import StringIO, BytesIO
 from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar, NoReturn
 from sqlalchemy import (
+    DateTime,
     Engine,
     create_engine,
     MetaData,
@@ -18,7 +20,7 @@ from sqlalchemy import (
     select,
     delete,
     null,
-    event,
+    event    
 )
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.dialects.postgresql import JSONB
@@ -48,6 +50,8 @@ from databricks.labs.dqx.checks_serializer import (
     SerializerFactory,
     DataFrameConverter,
     ChecksNormalizer,
+    compute_rule_fingerprint,
+    compute_rule_set_fingerprint,
 )
 from databricks.labs.dqx.utils import get_file_extension
 from databricks.labs.dqx.config_serializer import ConfigSerializer
@@ -110,7 +114,9 @@ class TableChecksStorageHandler(ChecksStorageHandler[TableChecksStorageConfig]):
         if not self.spark.catalog.tableExists(config.location):
             raise NotFound(f"Checks table {config.location} does not exist in the workspace")
         rules_df = self.spark.read.table(config.location)
-        return DataFrameConverter.from_dataframe(rules_df, run_config_name=config.run_config_name) or []
+        return DataFrameConverter.from_dataframe(
+            rules_df, run_config_name=config.run_config_name, rule_set_fingerprint=config.rule_set_fingerprint
+        ) or []
 
     @telemetry_logger("save_checks", "table")
     def save(self, checks: list[dict], config: TableChecksStorageConfig) -> None:
@@ -126,9 +132,18 @@ class TableChecksStorageHandler(ChecksStorageHandler[TableChecksStorageConfig]):
         """
         logger.info(f"Saving quality rules (checks) to table '{config.location}'")
         rules_df = DataFrameConverter.to_dataframe(self.spark, checks, run_config_name=config.run_config_name)
-        rules_df.write.option("replaceWhere", f"run_config_name = '{config.run_config_name}'").saveAsTable(
-            config.location, mode=config.mode
-        )
+        rule_set_fingerprint = rules_df.select("rule_set_fingerprint").first()[0]
+        print(f"rule_set_fingerprint: {rule_set_fingerprint}")
+        if rule_set_fingerprint is not None and self.spark.catalog.tableExists(config.location):
+            if not self.spark.read.table(config.location).filter(
+                f"run_config_name = '{config.run_config_name}' and rule_set_fingerprint = '{rule_set_fingerprint}'").take(1)==0:
+                logger.info(f"Checks with rule_set_fingerprint '{rule_set_fingerprint}' already exist in table '{config.location}'")
+                return
+        
+        writer = rules_df.write.option("mergeSchema", "true")
+        if config.mode == "overwrite":
+            writer = writer.option("replaceWhere", f"run_config_name = '{config.run_config_name}'")
+        writer.saveAsTable(config.location, mode=config.mode)
 
 
 class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageConfig]):
@@ -237,6 +252,9 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
             Column("filter", Text),
             Column("run_config_name", String(255), server_default="default"),
             Column("user_metadata", JSONB),
+            Column("created_at", DateTime),
+            Column("rule_fingerprint", String(64)),
+            Column("rule_set_fingerprint", String(64)),
         )
 
     @staticmethod
@@ -256,17 +274,25 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
         # First normalize special values for JSON serialization
         normalized_for_serialization = ChecksNormalizer.normalize(checks)
 
+        created_at = datetime.now(timezone.utc)
+        run_config_name = config.run_config_name
+        rule_set_fp = compute_rule_set_fingerprint(checks, run_config_name)
+
         # Then normalize the structure for Lakebase table
         normalized_checks = []
         for check in normalized_for_serialization:
             user_metadata = check.get("user_metadata")
+            check_run_config_name = check.get("run_config_name", run_config_name)
             normalized_check = {
                 "name": check.get("name"),
                 "criticality": check.get("criticality", "error"),
                 "check": check.get("check"),
                 "filter": check.get("filter"),
-                "run_config_name": check.get("run_config_name", config.run_config_name),
+                "run_config_name": check_run_config_name,
                 "user_metadata": null() if user_metadata is None else user_metadata,
+                "created_at": created_at,
+                "rule_fingerprint": compute_rule_fingerprint(check, check_run_config_name),
+                "rule_set_fingerprint": rule_set_fp,
             }
             normalized_checks.append(normalized_check)
         return normalized_checks
@@ -341,9 +367,19 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
         else:
             logger.info("Loading all checks (no run_config_name filter)")
 
+        if config.rule_set_fingerprint is not None:
+            logger.info(f"Filtering checks by rule_set_fingerprint='{config.rule_set_fingerprint}'")
+            stmt = stmt.where(table.c.rule_set_fingerprint == config.rule_set_fingerprint)
+
         with engine.connect() as conn:
             result = conn.execute(stmt)
             checks = result.mappings().all()
+
+            # Only apply latest-batch logic when no fingerprint was specified
+            if config.rule_set_fingerprint is None and checks and checks[0].get("created_at") is not None:
+                max_created_at = max(c["created_at"] for c in checks if c.get("created_at") is not None)
+                checks = [c for c in checks if c.get("created_at") == max_created_at]
+
             logger.info(
                 f"Successfully loaded {len(checks)} checks from {config.database_name}.{config.schema_name}.{config.table_name} "
                 f"for run_config_name='{config.run_config_name}'"
