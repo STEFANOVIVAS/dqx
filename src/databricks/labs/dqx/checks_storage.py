@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     insert,
+    inspect,
     select,
     delete,
     null,
@@ -340,6 +341,16 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
                 logger.info(f"Deleted {result.rowcount} existing checks for run_config_name '{config.run_config_name}'")
 
             normalized_checks = self._normalize_checks(checks, config)
+            rule_set_fingerprint = normalized_checks[0].get("rule_set_fingerprint")
+            exists_rule_set = (
+                select(table.c.rule_set_fingerprint)
+                .where(
+                    table.c.run_config_name == config.run_config_name,
+                    table.c.rule_set_fingerprint == rule_set_fingerprint,
+                )
+                .limit(1)
+            )
+            
             insert_stmt = insert(table)
             conn.execute(insert_stmt, normalized_checks)
             logger.info(
@@ -358,24 +369,35 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
         Returns:
             List of dq rules.
         """
+        inspector = inspect(engine)
+        if not inspector.has_table(config.table_name, schema=config.schema_name):
+            raise NotFound(f"Table '{config.location}' does not exist in the Lakebase instance")        
+        
         table = self.get_table_definition(config.schema_name, config.table_name)
         stmt = select(table).where(table.c.run_config_name == config.run_config_name)
+       
+        if config.rule_set_fingerprint:
+            logger.info(f"Filtering checks by rule_set_fingerprint='{config.rule_set_fingerprint}'")
+            stmt = select(table).where(
+                table.c.rule_set_fingerprint == config.rule_set_fingerprint,
+                table.c.run_config_name == config.run_config_name,
+            )
 
-        if self._fingerprint_columns_exists(engine, config.schema_name, config.table_name):
-            logger.info(f"Filtering checks by rule_fingerprint='{config.rule_fingerprint}'")      
-
-            if config.rule_set_fingerprint is not None:
-                logger.info(f"Filtering checks by rule_set_fingerprint='{config.rule_set_fingerprint}'")
-                stmt = stmt.where(table.c.rule_set_fingerprint == config.rule_set_fingerprint)
+        else:
+            logger.info("No rule_set_fingerprint provided, loading the most recent version.")
+            latest_rule_set_fingerprint = (
+                select(table.c.rule_set_fingerprint)
+                .where(table.c.run_config_name == config.run_config_name)
+                .order_by(table.c.created_at.desc())
+                .limit(1)
+                .scalar_subquery()
+            )
+            stmt = select(table).where(table.c.rule_set_fingerprint == latest_rule_set_fingerprint)      
 
         with engine.connect() as conn:
             result = conn.execute(stmt)
             checks = result.mappings().all()
-
-            # Only apply latest-batch logic when no fingerprint was specified
-            if config.rule_set_fingerprint is None and checks and checks[0].get("created_at") is not None:
-                max_created_at = max(c["created_at"] for c in checks if c.get("created_at") is not None)
-                checks = [c for c in checks if c.get("created_at") == max_created_at]
+        
 
             logger.info(
                 f"Successfully loaded {len(checks)} checks from {config.database_name}.{config.schema_name}.{config.table_name} "
