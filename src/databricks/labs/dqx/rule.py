@@ -11,7 +11,7 @@ from pyspark.sql import Column
 import pyspark.sql.functions as F
 from databricks.labs.dqx.utils import get_column_name_or_alias, normalize_bound_args
 from databricks.labs.dqx.errors import InvalidCheckError
-
+from databricks.labs.dqx.checks_serializer import compute_rule_fingerprint
 logger = logging.getLogger(__name__)
 
 
@@ -221,9 +221,8 @@ class DQRule(abc.ABC, DQRuleTypeMixin, SingleColumnMixin, MultipleColumnsMixin):
         """Compute a deterministic fingerprint hash for this rule.
 
         Returns:
-            A hex-encoded SHA-256 hash string based on the rule's definition.
-        """
-        from databricks.labs.dqx.checks_serializer import compute_rule_fingerprint
+            A hex-encoded SHA-256 hash string based on the rule's definition. """
+        
 
         return compute_rule_fingerprint(self.to_dict())
 
