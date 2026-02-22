@@ -217,7 +217,7 @@ def test_save_and_load_checks_from_lakebase_without_rule_set_fingerprint(
         location=lakebase_location, client_id=lakebase_client_id, instance_name=instance.name
     )
 
-    dq_engine.save_checks(checks=TEST_CHECKS[0:2], config=config)    
+    dq_engine.save_checks(checks=TEST_CHECKS[0:2], config=config)
     dq_engine.save_checks(checks=TEST_CHECKS[2:], config=config)
     checks = dq_engine.load_checks(config=config)
 
@@ -237,13 +237,13 @@ def test_save_and_load_checks_from_lakebase_with_rule_set_fingerprint(
     )
 
     dq_engine.save_checks(checks=TEST_CHECKS[0:2], config=config_save)
-    
+
     dq_engine.save_checks(checks=TEST_CHECKS[2:], config=config_save)
     config_load = LakebaseChecksStorageConfig(
         location=lakebase_location,
         client_id=lakebase_client_id,
         instance_name=instance.name,
-        rule_set_fingerprint="fa901b654f46bb6df077b4419397cc87522006cbbd635b1436bc01a10db994bc",
+        rule_set_fingerprint="139d1737f0f14a1571bf5fcfaea10abca2a119bb94f4fd1eb2ac09d09c13cfb3",
     )
     checks = dq_engine.load_checks(config=config_load)
 

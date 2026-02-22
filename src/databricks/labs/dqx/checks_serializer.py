@@ -372,21 +372,24 @@ class DataFrameConverter:
         Returns:
                 List of data quality check specifications as a Python dictionary
         """
-        filtered_df = df.where(f"run_config_name = '{run_config_name}'")    
+        filtered_df = df.where(f"run_config_name = '{run_config_name}'")
         if filtered_df.isEmpty():
-            logger.info(f"No checks found for run_config_name '{run_config_name}'.")    
-            return []      
+            logger.info(f"No checks found for run_config_name '{run_config_name}'.")
+            return []
 
         # Filter by fingerprint or to the latest batch by created_at
-        has_versioning_columns = all(col in df.columns for col in {"created_at", "rule_fingerprint","rule_set_fingerprint"})
-      
+        has_versioning_columns = all(
+            col in df.columns for col in {"created_at", "rule_fingerprint", "rule_set_fingerprint"}
+        )
+
         if has_versioning_columns:
 
             if not rule_set_fingerprint:
                 max_created_at = filtered_df.agg(F.max("created_at")).collect()[0][0]
-                print(f"Loading rule set with fingerprint {max_created_at}")
-                rule_set_fingerprint = filtered_df.where(F.col("created_at") == max_created_at).first().rule_set_fingerprint
-            
+                latest_row = filtered_df.where(F.col("created_at") == max_created_at).first()
+                if latest_row:
+                    rule_set_fingerprint = latest_row.rule_set_fingerprint
+
             filtered_df = filtered_df.where(f"rule_set_fingerprint = '{rule_set_fingerprint}'")
 
         check_rows = filtered_df.collect()
@@ -452,8 +455,8 @@ class DataFrameConverter:
         dq_rule_checks: list[DQRule] = deserialize_checks(checks)
 
         created_at = datetime.now(timezone.utc)
-        rule_set_fp = compute_rule_set_fingerprint(checks, run_config_name)
-        
+        rule_set_fp = compute_rule_set_fingerprint(checks)
+
         dq_rule_rows = []
         for dq_rule_check in dq_rule_checks:
             arguments = dict(dq_rule_check.check_func_kwargs)
@@ -465,7 +468,7 @@ class DataFrameConverter:
                 arguments["columns"] = dq_rule_check.columns
 
             json_arguments = {k: json.dumps(normalize_bound_args(v)) for k, v in arguments.items()}
-            check_dict = dq_rule_check.to_dict()
+
             dq_rule_rows.append(
                 [
                     dq_rule_check.name,
@@ -475,7 +478,7 @@ class DataFrameConverter:
                     run_config_name,
                     dq_rule_check.user_metadata,
                     created_at,
-                    compute_rule_fingerprint(check_dict, run_config_name),
+                    dq_rule_check.rule_fingerprint,
                     rule_set_fp,
                 ]
             )
@@ -528,7 +531,8 @@ def deserialize_checks(checks: list[dict], custom_checks: dict[str, Callable] | 
     deserializer = ChecksDeserializer(custom_checks)
     return deserializer.deserialize(checks)
 
-def compute_rule_fingerprint(check_dict: dict, run_config_name: str | None = None) -> str:
+
+def compute_rule_fingerprint(check_dict: dict) -> str:
     """Compute a deterministic SHA-256 hash of a single rule definition.
 
     Args:
@@ -542,16 +546,16 @@ def compute_rule_fingerprint(check_dict: dict, run_config_name: str | None = Non
     fingerprint_data = {
         "name": check_dict.get("name"),
         "criticality": check_dict.get("criticality", "error"),
-        "check": check_dict.get("check"),
-        "filter": check_dict.get("filter")
+        "function": check_dict.get("check", {}).get("function"),
+        "arguments": check_dict.get("check", {}).get("arguments"),
+        "filter": check_dict.get("filter"),
     }
-    if run_config_name is not None:
-        fingerprint_data["run_config_name"] = run_config_name
+
     canonical = json.dumps(fingerprint_data, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def compute_rule_set_fingerprint(checks: list[dict], run_config_name: str | None = None) -> str:
+def compute_rule_set_fingerprint(checks: list[dict]) -> str:
     """Compute a deterministic SHA-256 hash of the complete rule set.
 
     The hash is order-independent: individual rule fingerprints are sorted before combining.
@@ -564,6 +568,6 @@ def compute_rule_set_fingerprint(checks: list[dict], run_config_name: str | None
     Returns:
         A hex-encoded SHA-256 hash string representing the entire rule set.
     """
-    individual_fps = sorted(compute_rule_fingerprint(c, run_config_name) for c in checks)
+    individual_fps = sorted(compute_rule_fingerprint(c) for c in checks)
     combined = json.dumps(individual_fps, sort_keys=True)
     return hashlib.sha256(combined.encode()).hexdigest()

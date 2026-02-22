@@ -14,13 +14,14 @@ from databricks.labs.dqx.engine import DQEngine
 from databricks.labs.dqx.errors import InvalidConfigError
 from databricks.sdk.errors import NotFound
 
-from databricks.labs.dqx.checks_serializer import CHECKS_TABLE_SCHEMA
 
 from tests.conftest import TEST_CATALOG
 
-TEST_CHECKS_TABLE_SCHEMA =  ("name STRING, criticality STRING, check STRUCT<function STRING, for_each_column ARRAY<STRING>,"
-                            " arguments MAP<STRING, STRING>>, filter STRING, run_config_name STRING, user_metadata MAP<STRING, STRING>")
-    
+TEST_CHECKS_TABLE_SCHEMA = (
+    "name STRING, criticality STRING, check STRUCT<function STRING, for_each_column ARRAY<STRING>,"
+    " arguments MAP<STRING, STRING>>, filter STRING, run_config_name STRING, user_metadata MAP<STRING, STRING>"
+)
+
 
 INPUT_CHECKS = [
     {
@@ -133,8 +134,10 @@ def test_save_checks_to_table_with_unresolved_for_each_column(ws, make_schema, m
     engine = DQEngine(ws, spark)
     config = TableChecksStorageConfig(location=table_name, run_config_name="default")
     engine.save_checks(INPUT_CHECKS, config=config)
-    checks_df = spark.read.table(table_name).select("name", "criticality", "check", "filter", "run_config_name", "user_metadata")
-   
+    checks_df = spark.read.table(table_name).select(
+        "name", "criticality", "check", "filter", "run_config_name", "user_metadata"
+    )
+
     expected_raw_checks = [
         {
             "name": "col1_is_null",
@@ -510,7 +513,7 @@ def test_save_and_load_checks_from_delta_table_without_rule_set_fingerprint(ws, 
     engine = DQEngine(ws, spark)
     config = TableChecksStorageConfig(location=table_name)
     engine.save_checks(INPUT_CHECKS[:1], config=config)
-    
+
     engine.save_checks(INPUT_CHECKS[1:], config=config)
 
     checks = engine.load_checks(config=config)
@@ -525,12 +528,12 @@ def test_save_and_load_checks_from_delta_table_with_rule_set_fingerprint(ws, mak
     engine = DQEngine(ws, spark)
     config_save = TableChecksStorageConfig(location=table_name)
     engine.save_checks(INPUT_CHECKS[:1], config=config_save)
-    
+
     engine.save_checks(INPUT_CHECKS[1:], config=config_save)
 
     config_load = TableChecksStorageConfig(
         location=table_name,
-        rule_set_fingerprint="8e1e8771da2683ca212204e19c5474ee0e7b313097df8bb12bc8b33ac155512e",
+        rule_set_fingerprint="e27b1748e670c8bceeb8449ac494f22bd80a934a30a3c86919547de56790bc00",
     )
     checks = engine.load_checks(config=config_load)
 
@@ -540,7 +543,7 @@ def test_save_and_load_checks_from_delta_table_with_rule_set_fingerprint(ws, mak
 
 
 def test_save_and_load_checks_from_delta_table_rule_set_fingerprint_already_exists(ws, make_schema, make_random, spark):
-    
+
     catalog_name = TEST_CATALOG
     schema_name = make_schema(catalog_name=catalog_name).name
     table_name = f"{catalog_name}.{schema_name}.{make_random(10).lower()}"

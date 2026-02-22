@@ -31,7 +31,9 @@ from tests.integration.conftest import (
     RUN_ID,
     build_quality_violation,
     assert_df_equality_ignore_fingerprints as assert_df_equality,
+    compute_fingerprints,
 )
+from databricks.labs.dqx.checks_serializer import compute_rule_fingerprint
 
 
 SCHEMA = "a: int, b: int, c: int"
@@ -7107,7 +7109,15 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
     result_errors = checked.select(F.explode(F.col("_errors")).alias("dq")).select(F.expr("dq.*"))
     result_warnings = checked.select(F.explode(F.col("_warnings")).alias("dq")).select(F.expr("dq.*"))
 
-    expected = spark.createDataFrame(
+    # Compute fingerprints for the checks
+    rule_set_fp = compute_fingerprints(checks)[1]
+
+    # Get fingerprints for error checks (checks[0] and checks[1])
+    error_check_fps = [compute_rule_fingerprint(checks[0].to_dict()), compute_rule_fingerprint(checks[1].to_dict())]
+    # Get fingerprints for warning checks (checks[2] and checks[3])
+    warn_check_fps = [compute_rule_fingerprint(checks[2].to_dict()), compute_rule_fingerprint(checks[3].to_dict())]
+
+    expected_errors = spark.createDataFrame(
         [
             [
                 "a_is_null_or_empty",
@@ -7118,6 +7128,8 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
                 RUN_TIME,
                 RUN_ID,
                 user_metadata,
+                error_check_fps[0],
+                rule_set_fp,
             ],
             [
                 "a_is_null",
@@ -7128,13 +7140,45 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
                 RUN_TIME,
                 RUN_ID,
                 user_metadata,
+                error_check_fps[1],
+                rule_set_fp,
             ],
         ],
         dq_result_schema.elementType,
     )
 
-    assert_df_equality(result_errors, expected, ignore_nullable=True)
-    assert_df_equality(result_warnings, expected, ignore_nullable=True)
+    expected_warnings = spark.createDataFrame(
+        [
+            [
+                "a_is_null_or_empty",
+                "Column 'a' value is null or empty",
+                ["a"],
+                None,
+                "is_not_null_and_not_empty",
+                RUN_TIME,
+                RUN_ID,
+                user_metadata,
+                warn_check_fps[0],
+                rule_set_fp,
+            ],
+            [
+                "a_is_null",
+                "Column 'a' value is null",
+                ["a"],
+                "b = 1",
+                "is_not_null",
+                RUN_TIME,
+                RUN_ID,
+                user_metadata,
+                warn_check_fps[1],
+                rule_set_fp,
+            ],
+        ],
+        dq_result_schema.elementType,
+    )
+
+    assert_df_equality(result_errors, expected_errors, ignore_nullable=True)
+    assert_df_equality(result_warnings, expected_warnings, ignore_nullable=True)
 
 
 def test_apply_checks_with_sql_expression_for_map_and_array(ws, spark):

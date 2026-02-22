@@ -479,9 +479,7 @@ def test_table_checks_storage_config_with_fingerprint():
 
 def test_table_checks_storage_config_with_custom_run_config_and_fingerprint():
     fp = "abc123def456789"
-    config = TableChecksStorageConfig(
-        location="catalog.schema.table", run_config_name="prod", rule_set_fingerprint=fp
-    )
+    config = TableChecksStorageConfig(location="catalog.schema.table", run_config_name="prod", rule_set_fingerprint=fp)
     assert config.location == "catalog.schema.table"
     assert config.run_config_name == "prod"
     assert config.rule_set_fingerprint == fp
@@ -489,9 +487,7 @@ def test_table_checks_storage_config_with_custom_run_config_and_fingerprint():
 
 # Test LakebaseChecksStorageConfig with rule_set_fingerprint
 def test_lakebase_checks_storage_config_default_fingerprint_is_none():
-    config = LakebaseChecksStorageConfig(
-        location="db.schema.table", instance_name="my_instance"
-    )
+    config = LakebaseChecksStorageConfig(location="db.schema.table", instance_name="my_instance")
     assert config.location == "db.schema.table"
     assert config.instance_name == "my_instance"
     assert config.run_config_name == "default"

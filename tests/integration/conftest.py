@@ -1,5 +1,7 @@
 import logging
 import os
+import pyspark.sql.functions as F
+from pyspark.sql.types import ArrayType, StructType
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
@@ -40,8 +42,6 @@ FINGERPRINT_FIELDS = ["rule_fingerprint", "rule_set_fingerprint"]
 
 def _strip_fingerprints_from_result_column(df: DataFrame, col_name: str) -> DataFrame:
     """Remove fingerprint fields from a result array column (_errors or _warnings)."""
-    import pyspark.sql.functions as F
-    from pyspark.sql.types import ArrayType, StructType
 
     schema = df.schema
     if col_name not in df.columns:
@@ -69,15 +69,23 @@ def _strip_fingerprints_from_result_column(df: DataFrame, col_name: str) -> Data
 def assert_df_equality_ignore_fingerprints(
     df1: DataFrame,
     df2: DataFrame,
-    error_col: str = "_errors",
-    warning_col: str = "_warnings",
+    error_col: list[str] = ["_errors", "dq_errors"],
+    warning_col: list[str] = ["_warnings", "dq_warnings"],
     **kwargs,
 ):
     """Assert DataFrame equality after stripping fingerprint fields from result columns."""
-    df1_clean = _strip_fingerprints_from_result_column(df1, error_col)
-    df1_clean = _strip_fingerprints_from_result_column(df1_clean, warning_col)
-    df2_clean = _strip_fingerprints_from_result_column(df2, error_col)
-    df2_clean = _strip_fingerprints_from_result_column(df2_clean, warning_col)
+    df1_clean = df1
+    for col in error_col:
+        df1_clean = _strip_fingerprints_from_result_column(df1_clean, col)
+    for col in warning_col:
+        df1_clean = _strip_fingerprints_from_result_column(df1_clean, col)
+
+    df2_clean = df2
+    for col in error_col:
+        df2_clean = _strip_fingerprints_from_result_column(df2_clean, col)
+    for col in warning_col:
+        df2_clean = _strip_fingerprints_from_result_column(df2_clean, col)
+
     _chispa_assert_df_equality(df1_clean, df2_clean, **kwargs)
 
 

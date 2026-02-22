@@ -1,5 +1,7 @@
 import abc
+import hashlib
 import inspect
+import json
 import logging
 from enum import Enum
 from dataclasses import dataclass, field
@@ -11,7 +13,7 @@ from pyspark.sql import Column
 import pyspark.sql.functions as F
 from databricks.labs.dqx.utils import get_column_name_or_alias, normalize_bound_args
 from databricks.labs.dqx.errors import InvalidCheckError
-from databricks.labs.dqx.checks_serializer import compute_rule_fingerprint
+
 logger = logging.getLogger(__name__)
 
 
@@ -217,14 +219,28 @@ class DQRule(abc.ABC, DQRuleTypeMixin, SingleColumnMixin, MultipleColumnsMixin):
         return args, kwargs
 
     @ft.cached_property
-    def fingerprint(self) -> str:
-        """Compute a deterministic fingerprint hash for this rule.
+    def rule_fingerprint(self) -> str:
+        """Compute a deterministic SHA-256 hash of a single rule definition.
+
+        Args:
+            check_dict: Dictionary representing a single check rule.
+            run_config_name: Optional run configuration name to include in fingerprint.
+                When provided, different sources are distinguished by different fingerprints.
 
         Returns:
-            A hex-encoded SHA-256 hash string based on the rule's definition. """
-        
+            A hex-encoded SHA-256 hash string.
+        """
+        check_dict = self.to_dict()
+        fingerprint_data = {
+            "name": check_dict.get("name"),
+            "criticality": check_dict.get("criticality", "error"),
+            "function": check_dict.get("check", {}).get("function"),
+            "arguments": check_dict.get("check", {}).get("arguments"),
+            "filter": check_dict.get("filter"),
+        }
 
-        return compute_rule_fingerprint(self.to_dict())
+        canonical = json.dumps(fingerprint_data, sort_keys=True, default=str)
+        return hashlib.sha256(canonical.encode()).hexdigest()
 
     def to_dict(self) -> dict:
         """

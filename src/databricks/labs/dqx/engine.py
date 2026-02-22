@@ -16,7 +16,10 @@ from pyspark.sql.streaming import StreamingQuery
 
 from databricks.labs.dqx.base import DQEngineBase, DQEngineCoreBase
 from databricks.labs.dqx.checks_resolver import resolve_custom_check_functions_from_path
-from databricks.labs.dqx.checks_serializer import deserialize_checks, compute_rule_fingerprint, compute_rule_set_fingerprint
+from databricks.labs.dqx.checks_serializer import (
+    deserialize_checks,
+    compute_rule_set_fingerprint,
+)
 from databricks.labs.dqx.config_serializer import ConfigSerializer
 from databricks.labs.dqx.checks_storage import (
     FileChecksStorageHandler,
@@ -135,7 +138,6 @@ class DQEngineCore(DQEngineCoreBase):
                 "All elements in the 'checks' list must be instances of DQRule. Use 'apply_checks_by_metadata' to pass checks as list of dicts instead."
             )
 
-             
         warning_checks = self._get_check_columns(checks, Criticality.WARN.value)
         error_checks = self._get_check_columns(checks, Criticality.ERROR.value)
 
@@ -442,7 +444,7 @@ class DQEngineCore(DQEngineCoreBase):
                 engine_user_metadata=self.engine_user_metadata,
                 run_time_overwrite=self.run_time_overwrite,
                 ref_dfs=ref_dfs,
-                rule_fingerprint=compute_rule_fingerprint(normalized_check.to_dict()),
+                rule_fingerprint=check.rule_fingerprint,
                 rule_set_fingerprint=rule_set_fingerprint,
             )
             log_telemetry(self.ws, "check", check.check_func.__name__)
