@@ -1,19 +1,22 @@
 import logging
 import os
-import pyspark.sql.functions as F
-from pyspark.sql.types import ArrayType, StructType
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
 from unittest.mock import patch
-
+from pyspark.sql import DataFrame, functions as F
+from pyspark.sql.types import ArrayType, StructType
 from chispa import assert_df_equality as _chispa_assert_df_equality  # type: ignore
-from pyspark.sql import DataFrame
+
 import pytest
 from databricks.sdk.service.workspace import ImportFormat
 from databricks.labs.blueprint.installation import Installation
 from databricks.labs.pytester.fixtures.baseline import factory
-from databricks.labs.dqx.checks_serializer import compute_rule_fingerprint, compute_rule_set_fingerprint
+from databricks.labs.dqx.checks_serializer import (
+    compute_rule_fingerprint,
+    compute_rule_set_fingerprint,
+    serialize_checks,
+)
 from databricks.labs.dqx.checks_storage import InstallationChecksStorageHandler
 from databricks.labs.dqx.config import InputConfig, OutputConfig, InstallationChecksStorageConfig, ExtraParams
 from databricks.labs.dqx.engine import DQEngine
@@ -69,21 +72,19 @@ def _strip_fingerprints_from_result_column(df: DataFrame, col_name: str) -> Data
 def assert_df_equality_ignore_fingerprints(
     df1: DataFrame,
     df2: DataFrame,
-    error_col: list[str] = ["_errors", "dq_errors"],
-    warning_col: list[str] = ["_warnings", "dq_warnings"],
     **kwargs,
 ):
     """Assert DataFrame equality after stripping fingerprint fields from result columns."""
     df1_clean = df1
-    for col in error_col:
+    for col in ("_errors", "dq_errors"):
         df1_clean = _strip_fingerprints_from_result_column(df1_clean, col)
-    for col in warning_col:
+    for col in ("_warnings", "dq_warnings"):
         df1_clean = _strip_fingerprints_from_result_column(df1_clean, col)
 
     df2_clean = df2
-    for col in error_col:
+    for col in ("_errors", "dq_errors"):
         df2_clean = _strip_fingerprints_from_result_column(df2_clean, col)
-    for col in warning_col:
+    for col in ("_warnings", "dq_warnings"):
         df2_clean = _strip_fingerprints_from_result_column(df2_clean, col)
 
     _chispa_assert_df_equality(df1_clean, df2_clean, **kwargs)
@@ -516,3 +517,49 @@ def assert_quarantine_and_output_dfs(ws, spark, expected_output, output_config, 
 def assert_output_df(spark, expected_output, output_config):
     checked_df = spark.table(output_config.location)
     assert_df_equality_ignore_fingerprints(checked_df, expected_output, ignore_nullable=True)
+
+
+def generate_checks_with_rule_and_set_fingerprint(rules: list) -> list[dict]:
+    if all(isinstance(rule, DQRule) for rule in rules):
+        checks_dict = serialize_checks(rules)
+    else:
+        checks_dict = rules
+    rule_set_fingerprint = compute_rule_set_fingerprint(checks_dict)
+    for check in checks_dict:
+        check["rule_fingerprint"] = compute_rule_fingerprint(check)
+        check["rule_set_fingerprint"] = rule_set_fingerprint
+
+    return checks_dict
+
+
+def get_rule_fingerprint_from_checks(
+    versioning_rules_checks: list[dict] | None, check_name: str, criticality: str
+) -> str | None:
+    """
+    Helper function to extract the rule_fingerprint from the versioning rules checks
+    based on the check name, function, criticality and column (if applicable).
+    versioning_rules_checks: list of versioning rules checks
+    check_name: name of the check
+    criticality: criticality of the check (e.g. "error", "warning")
+
+    """
+    rule_dict = {}
+    if not versioning_rules_checks:
+        return None
+    for check in versioning_rules_checks:
+        if check.get("name") == check_name and check.get("criticality") == criticality:
+            rule_dict = check
+    return rule_dict.get("rule_fingerprint", None)
+
+
+def get_rule_set_fingerprint_from_checks(versioning_rules_checks: list[dict] | None) -> str | None:
+    """
+    Helper function to extract the rule_set_fingerprint from the versioning rules checks
+    based on the check name, function, criticality and column (if applicable).
+    versioning_rules_checks: list of versioning rules checks
+    check_name: name of the check
+    """
+
+    if not versioning_rules_checks:
+        return None
+    return versioning_rules_checks[0].get("rule_set_fingerprint", None)

@@ -31,9 +31,10 @@ from tests.integration.conftest import (
     RUN_ID,
     build_quality_violation,
     assert_df_equality_ignore_fingerprints as assert_df_equality,
-    compute_fingerprints,
+    generate_checks_with_rule_and_set_fingerprint,
+    get_rule_fingerprint_from_checks,
+    get_rule_set_fingerprint_from_checks,
 )
-from databricks.labs.dqx.checks_serializer import compute_rule_fingerprint
 
 
 SCHEMA = "a: int, b: int, c: int"
@@ -7103,19 +7104,11 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
             filter="b = 1",
         ),
     ]
-
+    versioning_rules_checks = generate_checks_with_rule_and_set_fingerprint(checks)
     checked = dq_engine.apply_checks(test_df, checks)
 
     result_errors = checked.select(F.explode(F.col("_errors")).alias("dq")).select(F.expr("dq.*"))
     result_warnings = checked.select(F.explode(F.col("_warnings")).alias("dq")).select(F.expr("dq.*"))
-
-    # Compute fingerprints for the checks
-    rule_set_fp = compute_fingerprints(checks)[1]
-
-    # Get fingerprints for error checks (checks[0] and checks[1])
-    error_check_fps = [compute_rule_fingerprint(checks[0].to_dict()), compute_rule_fingerprint(checks[1].to_dict())]
-    # Get fingerprints for warning checks (checks[2] and checks[3])
-    warn_check_fps = [compute_rule_fingerprint(checks[2].to_dict()), compute_rule_fingerprint(checks[3].to_dict())]
 
     expected_errors = spark.createDataFrame(
         [
@@ -7128,8 +7121,8 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
                 RUN_TIME,
                 RUN_ID,
                 user_metadata,
-                error_check_fps[0],
-                rule_set_fp,
+                get_rule_fingerprint_from_checks(versioning_rules_checks, "a_is_null_or_empty", "error"),
+                get_rule_set_fingerprint_from_checks(versioning_rules_checks),
             ],
             [
                 "a_is_null",
@@ -7140,8 +7133,8 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
                 RUN_TIME,
                 RUN_ID,
                 user_metadata,
-                error_check_fps[1],
-                rule_set_fp,
+                get_rule_fingerprint_from_checks(versioning_rules_checks, "a_is_null", "error"),
+                get_rule_set_fingerprint_from_checks(versioning_rules_checks),
             ],
         ],
         dq_result_schema.elementType,
@@ -7158,8 +7151,8 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
                 RUN_TIME,
                 RUN_ID,
                 user_metadata,
-                warn_check_fps[0],
-                rule_set_fp,
+                get_rule_fingerprint_from_checks(versioning_rules_checks, "a_is_null_or_empty", "warn"),
+                get_rule_set_fingerprint_from_checks(versioning_rules_checks),
             ],
             [
                 "a_is_null",
@@ -7170,8 +7163,8 @@ def test_define_user_metadata_and_extract_dq_results(ws, spark):
                 RUN_TIME,
                 RUN_ID,
                 user_metadata,
-                warn_check_fps[1],
-                rule_set_fp,
+                get_rule_fingerprint_from_checks(versioning_rules_checks, "a_is_null", "warn"),
+                get_rule_set_fingerprint_from_checks(versioning_rules_checks),
             ],
         ],
         dq_result_schema.elementType,

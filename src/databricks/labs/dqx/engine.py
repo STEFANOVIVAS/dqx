@@ -421,6 +421,7 @@ class DQEngineCore(DQEngineCoreBase):
             checks: List of DQRule instances representing the checks to apply.
             dest_col: Name of the output column where the check results map will be stored.
             ref_dfs: Optional dictionary of reference DataFrames, keyed by name, for use by dataset-level checks.
+            rule_set_fingerprint: Fingerprint of the rule set
 
         Returns:
             DataFrame with an added array column (*dest_col*) containing the results of the applied checks.

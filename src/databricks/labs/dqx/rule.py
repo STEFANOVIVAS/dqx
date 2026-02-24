@@ -222,11 +222,6 @@ class DQRule(abc.ABC, DQRuleTypeMixin, SingleColumnMixin, MultipleColumnsMixin):
     def rule_fingerprint(self) -> str:
         """Compute a deterministic SHA-256 hash of a single rule definition.
 
-        Args:
-            check_dict: Dictionary representing a single check rule.
-            run_config_name: Optional run configuration name to include in fingerprint.
-                When provided, different sources are distinguished by different fingerprints.
-
         Returns:
             A hex-encoded SHA-256 hash string.
         """

@@ -379,7 +379,7 @@ class DataFrameConverter:
 
         # Filter by fingerprint or to the latest batch by created_at
         has_versioning_columns = all(
-            col in df.columns for col in {"created_at", "rule_fingerprint", "rule_set_fingerprint"}
+            col in df.columns for col in ("created_at", "rule_fingerprint", "rule_set_fingerprint")
         )
 
         if has_versioning_columns:
@@ -537,8 +537,6 @@ def compute_rule_fingerprint(check_dict: dict) -> str:
 
     Args:
         check_dict: Dictionary representing a single check rule.
-        run_config_name: Optional run configuration name to include in fingerprint.
-            When provided, different sources are distinguished by different fingerprints.
 
     Returns:
         A hex-encoded SHA-256 hash string.
@@ -562,8 +560,6 @@ def compute_rule_set_fingerprint(checks: list[dict]) -> str:
 
     Args:
         checks: List of check dictionaries.
-        run_config_name: Optional run configuration name to include in fingerprints.
-            When provided, different sources have different rule set fingerprints.
 
     Returns:
         A hex-encoded SHA-256 hash string representing the entire rule set.

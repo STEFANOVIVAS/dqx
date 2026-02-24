@@ -259,7 +259,7 @@ def test_load_checks_from_table_saved_from_dict_with_unresolved_for_each_column(
     ]
     checks_df = spark.createDataFrame(input_checks, TEST_CHECKS_TABLE_SCHEMA)
     checks_df.write.saveAsTable(table_name)
-    spark.read.table(table_name).show(truncate=False)
+
     engine = DQEngine(ws, spark)
     config = TableChecksStorageConfig(location=table_name)  # only loading run_config_name = "default"
     loaded_checks = engine.load_checks(config=config)
