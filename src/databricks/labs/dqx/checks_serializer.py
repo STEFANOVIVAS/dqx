@@ -383,14 +383,12 @@ class DataFrameConverter:
         )
 
         if has_versioning_columns:
-
-            if not rule_set_fingerprint:
-                max_created_at = filtered_df.agg(F.max("created_at")).collect()[0][0]
-                latest_row = filtered_df.where(F.col("created_at") == max_created_at).first()
-                if latest_row:
-                    rule_set_fingerprint = latest_row.rule_set_fingerprint
-
-            filtered_df = filtered_df.where(f"rule_set_fingerprint = '{rule_set_fingerprint}'")
+            if rule_set_fingerprint:
+                filtered_df = filtered_df.where((F.col("rule_set_fingerprint") == rule_set_fingerprint)&(F.col("run_config_name") == run_config_name))
+                    
+            else:
+                rule_set_fingerprint=filtered_df.select(F.col("rule_set_fingerprint")).where(F.col("run_config_name") == run_config_name).orderBy(F.col("created_at").desc()).limit(1).collect()[0][0]
+                filtered_df = filtered_df.where((F.col("rule_set_fingerprint") == rule_set_fingerprint)&(F.col("run_config_name") == run_config_name))
 
         check_rows = filtered_df.collect()
         collect_limit = 500
