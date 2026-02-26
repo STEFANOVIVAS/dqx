@@ -147,19 +147,17 @@ class TableChecksStorageHandler(ChecksStorageHandler[TableChecksStorageConfig]):
         first_row = rules_df.select("rule_set_fingerprint").first()
         rule_set_fingerprint = first_row[0] if first_row else None
 
-        if self.spark.catalog.tableExists(config.location) and rule_set_fingerprint is not None:
+        try:
+            # to be handled by the sdk: https://github.com/databricks/databricks-sdk-py/issues/1266
+            url_safe_table_name = urllib.parse.quote(config.location.replace("`", ""))
+            self.ws.tables.get(full_name=url_safe_table_name)
+        except NotFound as e:
+            raise NotFound(f"Checks table '{config.location}' does not exist in the workspace") from e
 
-            if (
-                not self.spark.read.table(config.location)
-                .filter(
-                    f"run_config_name = '{config.run_config_name}' and rule_set_fingerprint = '{rule_set_fingerprint}'"
-                )
-                .isEmpty()
-            ):
-                logger.info(
-                    f"Checks with rule_set_fingerprint '{rule_set_fingerprint}' already exist in table '{config.location}'"
-                )
-                return
+        if rule_set_fingerprint is not None and not self.spark.read.table(config.location).filter(
+                    f"run_config_name = '{config.run_config_name}' and rule_set_fingerprint = '{rule_set_fingerprint}'").isEmpty():
+            logger.info(f"Checks with rule_set_fingerprint '{rule_set_fingerprint}' already exist in table '{config.location}'")
+            return
 
         writer = rules_df.write.option("mergeSchema", "true")
         if config.mode == "overwrite":
