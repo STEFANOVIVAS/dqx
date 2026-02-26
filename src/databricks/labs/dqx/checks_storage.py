@@ -31,7 +31,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import DatabaseError, ProgrammingError, OperationalError, IntegrityError
 
 import yaml
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession,functions as F
 from databricks.sdk.errors import NotFound
 from databricks.sdk.service.workspace import ImportFormat
 
@@ -154,8 +154,8 @@ class TableChecksStorageHandler(ChecksStorageHandler[TableChecksStorageConfig]):
         except NotFound as e:
             raise NotFound(f"Checks table '{config.location}' does not exist in the workspace") from e
 
-        if rule_set_fingerprint is not None and not self.spark.read.table(config.location).filter(
-                    f"run_config_name = '{config.run_config_name}' and rule_set_fingerprint = '{rule_set_fingerprint}'").isEmpty():
+        if rule_set_fingerprint is not None and not self.spark.read.table(config.location).filter((
+                    F.col("run_config_name") == config.run_config_name) & (F.col("rule_set_fingerprint") == rule_set_fingerprint)).isEmpty():
             logger.info(f"Checks with rule_set_fingerprint '{rule_set_fingerprint}' already exist in table '{config.location}'")
             return
 
