@@ -353,12 +353,7 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
                 f"Successfully created or verified table '{config.database_name}.{config.schema_name}.{config.table_name}'."
             )
             self._ensure_rule_version_columns_exist(conn, config)
-            logger.info("Rule version columns exist or added.")
-
-            if config.mode == "overwrite":
-                delete_stmt = delete(table).where(table.c.run_config_name == config.run_config_name)
-                result = conn.execute(delete_stmt)
-                logger.info(f"Deleted {result.rowcount} existing checks for run_config_name '{config.run_config_name}'")
+            logger.info("Rule version columns exist or added.")          
 
             normalized_checks = self._normalize_checks(checks, config)
             rule_set_fingerprint = normalized_checks[0].get("rule_set_fingerprint")
@@ -373,6 +368,13 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
             if conn.execute(exists_rule_set).first():
                 logger.info(f"Checks with rule_set_fingerprint {rule_set_fingerprint} already exist — skipping")
                 return
+            
+            if config.mode == "overwrite":
+                delete_stmt = delete(table).where(table.c.run_config_name == config.run_config_name)
+                result = conn.execute(delete_stmt)
+                logger.info(f"Deleted {result.rowcount} existing checks for run_config_name '{config.run_config_name}'")
+            
+            
             insert_stmt = insert(table)
             conn.execute(insert_stmt, normalized_checks)
             logger.info(
