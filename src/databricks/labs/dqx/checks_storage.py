@@ -431,7 +431,7 @@ class LakebaseChecksStorageHandler(ChecksStorageHandler[LakebaseChecksStorageCon
                     .limit(1)
                     .scalar_subquery()
                 )
-                stmt = select(table).where(table.c.rule_set_fingerprint == latest_rule_set_fingerprint)
+                stmt = select(table).where(table.c.rule_set_fingerprint == latest_rule_set_fingerprint, table.c.run_config_name == config.run_config_name)
 
         with engine.connect() as conn:
             result = conn.execute(stmt)
